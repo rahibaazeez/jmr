@@ -7,9 +7,7 @@ const initialFormState = {
   product: '',
   version: '',
   patch: '',
-  architectures: '',
   certified: '',
-  releaseVersion: '',
   supportStatus: '',
   notes: '',
   coreComponent: '',
@@ -23,6 +21,7 @@ const initialFormState = {
 function App() {
   const [formData, setFormData] = useState(initialFormState);
   const [notification, setNotification] = useState(null);
+  const [logs, setLogs] = useState([]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -32,17 +31,93 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const { error } = await supabase
-        .from('OFSAA_stack')
-        .insert([formData]);
+      const sanitizedClient = formData.clientName.replace(/[^a-zA-Z0-9-_]/g, '');
 
-      if (error) throw error;
+      // Fetch all existing IDs to determine the next global sequence number
+      const { data: existingIds, error: fetchError } = await supabase
+        .from('stack')
+        .select('id');
 
-      showNotification('Record created successfully', 'success');
+      if (fetchError) throw fetchError;
+
+      let nextIndex = 1;
+      const prefix = sanitizedClient ? `${sanitizedClient}_` : '';
+
+      if (existingIds && existingIds.length > 0) {
+        // Filter IDs that start with the current client prefix
+        const clientIds = existingIds
+          .map(row => row.id)
+          .filter(id => id && id.toString().startsWith(prefix));
+
+        const counts = clientIds
+          .map(id => {
+            const parts = id.split('_');
+            const lastPart = parts[parts.length - 1];
+            const num = parseInt(lastPart, 10);
+            return isNaN(num) ? 0 : num;
+          });
+
+        if (counts.length > 0) {
+          nextIndex = Math.max(...counts) + 1;
+        }
+      }
+
+      const customId = `${prefix}${nextIndex}`;
+
+      // Helper to filter payload against actual table columns
+      const insertSafe = async (table, data) => {
+        const { data: sampleRows } = await supabase.from(table).select('*').limit(1);
+        let payload = { ...data };
+
+        if (sampleRows && sampleRows.length > 0) {
+          const validColumns = Object.keys(sampleRows[0]);
+          const filtered = {};
+          Object.keys(payload).forEach(key => {
+            if (validColumns.includes(key)) filtered[key] = payload[key];
+          });
+          payload = filtered;
+        }
+
+        console.log(`Inserting into ${table}:`, payload);
+        const { error } = await supabase.from(table).insert([payload]);
+        if (error) throw error;
+      };
+
+      // 1. Insert into Main Stack Table
+      const stackPayload = {
+        id: customId,
+        clientName: formData.clientName,
+        componentType: formData.componentType,
+        product: formData.product,
+        version: formData.version,
+        patch: formData.patch,
+        certified: formData.certified,
+        supportStatus: formData.supportStatus
+      };
+      await insertSafe('stack', stackPayload);
+
+      // 2. Insert into Component Details Table
+      const detailsPayload = {
+        id: customId,
+        coreComponent: formData.coreComponent,
+        subApplication: formData.subApplication,
+        versionDetails: formData.versionDetails,
+        vcpu: formData.vcpu,
+        ram: formData.ram,
+        storage: formData.storage,
+        notes: formData.notes
+      };
+
+      try {
+        await insertSafe('component', detailsPayload);
+      } catch (detailError) {
+        console.warn('Could not insert into details table:', detailError);
+      }
+
+      showNotification(`Record created `, 'success');
       resetForm();
     } catch (error) {
-      showNotification('Error saving record: ' + error.message, 'error');
-      console.error(error);
+      console.error('Error saving record:', error);
     }
   };
 
@@ -162,6 +237,7 @@ function App() {
           </div>
         </form>
       </div>
+
     </div>
   );
 }
