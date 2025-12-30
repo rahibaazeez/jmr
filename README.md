@@ -41,8 +41,11 @@ A modern, streamlined web application for capturing and managing OFSAA stack and
 
 ## 🗄️ Database Schema
 
-The application expects a table named `OFSAA_stack` in Supabase with the following schema:
-*   `id` (int8, primary key, generated)
+The application now uses two tables in Supabase:
+
+### 1. `stack` Table
+Contains the high-level stack information.
+*   `id` (text, primary key) - Format: `ClientName_Sequence`
 *   `clientName` (text)
 *   `componentType` (text)
 *   `product` (text)
@@ -50,6 +53,10 @@ The application expects a table named `OFSAA_stack` in Supabase with the followi
 *   `patch` (text)
 *   `certified` (text)
 *   `supportStatus` (text)
+
+### 2. `component` Table
+Contains detailed component specifications.
+*   `id` (text, primary key) - Matches the `id` from the `stack` table
 *   `coreComponent` (text)
 *   `subApplication` (text)
 *   `versionDetails` (text)
@@ -57,7 +64,6 @@ The application expects a table named `OFSAA_stack` in Supabase with the followi
 *   `ram` (text)
 *   `storage` (text)
 *   `notes` (text)
-*   `createdAt` (timestamptz, default: now())
 
 ## 📝 Usage
 
